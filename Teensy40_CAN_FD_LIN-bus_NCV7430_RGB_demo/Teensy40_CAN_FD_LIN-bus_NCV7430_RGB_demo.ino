@@ -1,69 +1,50 @@
-/*
- * 
- * Teensy 4.0 CAN FD and LIN-bus demo.
- * 
- * For use with this board:
- * https://www.skpang.co.uk/products/teensy-4-0-can-fd-and-lin-bus-breakout-board-include-teensy-4-0
- * 
- * LIN-bus library must be installed first.
- * https://github.com/MarkusLange/Teensy_3.x_4.x_and_LC_LIN_Master
- * 
- * NCV7430 RGB board:
- * https://www.skpang.co.uk/collections/breakout-boards/products/ncv7430-lin-bus-rgb-led-breakout-baord
- * 
- */
-
 #include "lin_bus.h"
 #include <FlexCAN_T4.h>
-FlexCAN_T4FD<CAN3, RX_SIZE_256, TX_SIZE_16> FD;
+FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can0;
 
-
-// Create an IntervalTimer object 
-IntervalTimer myTimer;
+#define NUM_RX_MAILBOXES 1
+#define NUM_TX_MAILBOXES 1
 
 int ledState = LOW;                // ledState used to set the LED
-unsigned long interval = 200000;   // interval at which to blinkLED to run every 0.2 seconds
-
-#define SET_LED_CONTROL 0x23
-#define SET_LED_COLOUR  0x24
 
 LIN lin(&Serial3, 19200);
 
 int lin_cs = 32;
-
 int led1 = 23;
-int lin_fault = 28;
-//                              Grp   Grp   Fade  Intense  G     R     B
-uint8_t buffer_red[]   = {0xc0, 0x00, 0x00, 0x00, 0x31, 0x00, 0xff, 0x00};
-uint8_t buffer_green[] = {0xc0, 0x00, 0x00, 0x00, 0x31, 0xff, 0x00, 0x00};
-uint8_t buffer_blue[]  = {0xc0, 0x00, 0x00, 0x00, 0x31, 0x00, 0x00, 0xff};
+
+uint8_t buffer_state_a[] = {0xc0, 0x00, 0x00, 0x00, 0x31, 0x00, 0xff, 0x00};
+uint8_t buffer_state_b[] = {0xc0, 0x00, 0x00, 0x00, 0x31, 0xff, 0x00, 0x00};
+uint8_t buffer_state_c[] = {0xc0, 0x00, 0x00, 0x00, 0x31, 0x00, 0x00, 0xff};
 uint8_t can_data;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(lin_fault,INPUT);
   pinMode(lin_cs, OUTPUT);
   digitalWrite(lin_cs, HIGH);
   delay(100);
   pinMode(led1,OUTPUT);
   
-
   Serial.begin(115200);
-  Serial.print("NVC7430 RGB Demo");
-
-  init_ncv7430();
   myTimer.begin(blinkLED, interval);
 
-  FD.begin();
-  CANFD_timings_t config;
-  config.clock = CLK_24MHz;
-  config.baudrate =   500000;     // 500kbps Nominal data rate
-  config.baudrateFD = 2000000;    // 2000kpbs Data rate
-  config.propdelay = 190;
-  config.bus_length = 1;
-  config.sample = 75;
-  FD.setRegions(64);
-  FD.setBaudRate(config);
+  Can0.begin();
+  Can0.setMaxMB(NUM_RX_MAILBOXES + NUM_TX_MAILBOXES);
+
+  for (int i = 0; i<NUM_RX_MAILBOXES; i++){
+      Can0.setMB((FLEXCAN_MAILBOX)i,RX,STD);
+  }
+  for (int i = 0; i<NUM_TX_MAILBOXES; i++){
+      Can0.setMB((FLEXCAN_MAILBOX)i,TX,STD);
+  }
+
+  Can0.setMBFilter(REJECT_ALL);
+  Can0.enableMBInterrupts();
+  Can0.setMBFilter(MB1, 0x666);
+  Can0.onReceive(MB1, canReadConfig);
+
+  Serial.println("--- FlexCAN_T4 MB Status ---");
+  Can0.mailboxStatus();
+  Serial.println("");
 
 
   FD.setMBFilter(ACCEPT_ALL);
