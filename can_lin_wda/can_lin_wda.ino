@@ -12,8 +12,10 @@ LIN lin;
 int lin_cs = 32;
 int lin_fault = 28;
 int led1 = 13;
+int counter = 0;
 
-uint8_t buffer_state_a[] = {0xc0, 0x00, 0x00, 0x00, 0x31, 0x00, 0xff, 0x00};
+uint8_t buffer_state_a[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+uint8_t buffer_test[] = {0x30, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t can_data;
 
 void readFrame(const CAN_message_t &frame) {
@@ -42,7 +44,6 @@ void setup() {
   pinMode(lin_fault, INPUT);
   lin.begin(&Serial3, 19200);
 
-  delay(100);
   pinMode(led1, OUTPUT);
   digitalWrite(led1, HIGH);
 
@@ -84,10 +85,79 @@ void constructFrame() {
   msg1.buf[7] = 0;
 }
 
+
 void loop() {
+  counter++;
+
+  if (counter > 15) {
+    counter = 0;
+  }
+
+  int bit4 = 1;  // KL15 Ignition enable (ON REQUIRED)
+  int bit5 = 1;  // KLX enable (ON REQUIRED)
+
+  uint8_t byte1_first_four_bits = 5;  // Speed controls for intermittent wipe
+  /*
+   * 1 = slow
+   * 5 = low-mid
+   * 9 = high-mid
+   * 13 = = fast
+   */
+  int byte1_bit4 = 0;  // Single wipe
+  int byte1_bit5 = 0;  // Intermittent wipe
+  int byte1_bit6 = 0;  // Slow continous wipe
+  int byte1_bit7 = 0;  // Fast continous wipe
+
+  // Add the counter value to the first 4 bits of byte 0 of buffer_state_a
+  buffer_state_a[0] = (buffer_state_a[0] & 0xF0) | (counter & 0x0F);
+
+  // Set bit 4 based on bit4 variable
+  if (bit4 == 1) {
+    buffer_state_a[0] |= (1 << 4);  // Set bit 4
+  } else {
+    buffer_state_a[0] &= ~(1 << 4);  // Clear bit 4
+  }
+
+  // Set bit 5 based on bit5 variable
+  if (bit5 == 1) {
+    buffer_state_a[0] |= (1 << 5);  // Set bit 5
+  } else {
+    buffer_state_a[0] &= ~(1 << 5);  // Clear bit 5
+  }
+
+  // Set the first four bits of byte 1
+  buffer_state_a[1] = (buffer_state_a[1] & 0xF0) | (byte1_first_four_bits & 0x0F);
+
+  // Set bit 4 of byte 1 based on byte1_bit4 variable
+  if (byte1_bit4 == 1) {
+    buffer_state_a[1] |= (1 << 4);  // Set bit 4
+  } else {
+    buffer_state_a[1] &= ~(1 << 4);  // Clear bit 4
+  }
+
+  // Set bit 5 of byte 1 based on byte1_bit5 variable
+  if (byte1_bit5 == 1) {
+    buffer_state_a[1] |= (1 << 5);  // Set bit 5
+  } else {
+    buffer_state_a[1] &= ~(1 << 5);  // Clear bit 5
+  }
+
+  // Set bit 6 of byte 1 based on byte1_bit6 variable
+  if (byte1_bit6 == 1) {
+    buffer_state_a[1] |= (1 << 6);  // Set bit 6
+  } else {
+    buffer_state_a[1] &= ~(1 << 6);  // Clear bit 6
+  }
+
+  // Set bit 7 of byte 1 based on byte1_bit7 variable
+  if (byte1_bit7 == 1) {
+    buffer_state_a[1] |= (1 << 7);  // Set bit 7
+  } else {
+    buffer_state_a[1] &= ~(1 << 7);  // Clear bit 7
+  }
+
+  lin.order(0x31, buffer_state_a, 8, lin2x);
   constructFrame();
-  lin.order(0x31, buffer_state_a, 8);
-  Serial.println("you're doing great.");
   Can0.write(msg1);
-  delay(100);
+  delay(20);
 }
