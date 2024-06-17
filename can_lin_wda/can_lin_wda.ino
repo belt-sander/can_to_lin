@@ -1,3 +1,8 @@
+/*
+ * Brief:   A module to allow CAN messages to control a Bosch WDA
+ * Author:  Sander
+ */ 
+
 #include "lin_bus.h"
 #include <FlexCAN_T4.h>
 FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can0;
@@ -9,13 +14,30 @@ unsigned int BASE_CAN_ADDRESS = 0x777;
 static CAN_message_t msg1;
 
 LIN lin;
+
 int lin_cs = 32;
 int lin_fault = 28;
 int led1 = 13;
-int counter = 0;
+int wda_counter = 0;  // 0-15 rolling counter
+int wda_kl15_enable = 1;  // KL15 ignition enable (ON REQUIRED)
+int wda_klx_enable = 1;  // KLX enable (ON REQUIRED)
 
-uint8_t buffer_state_a[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-uint8_t buffer_test[] = {0x30, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t wda_intermittent_wipe_speed = 5;  // Speed controls for intermittent wipe
+/*
+  * 1 = slow
+  * 5 = low-mid
+  * 9 = high-mid
+  * 13 = = fast
+  */
+int wda_single_wipe_req = 0;  // Single wipe
+int wda_intermittent_wipe_req = 0;  // Intermittent wipe
+int wda_cont_slow_wipe_req = 0;  // Slow continous wipe
+int wda_cont_fast_wipe_req = 0;  // Fast continous wipe
+
+uint8_t can_tx_byte_1 = 0x00;
+uint8_t can_tx_byte_2 = 0x00;
+
+uint8_t buffer_data[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 uint8_t can_data;
 
 void readFrame(const CAN_message_t &frame) {
@@ -36,6 +58,55 @@ void readFrame(const CAN_message_t &frame) {
     Serial.print(" ");
   }
   Serial.println();
+
+  if (frame.buf[0] == 0x66) {
+    if (frame.buf[1] == 0x01) {  // Single wipe
+      wda_intermittent_wipe_req = 0;
+      wda_single_wipe_req = 1;
+      wda_cont_slow_wipe_req = 0;
+      wda_cont_fast_wipe_req = 0;
+    } 
+    
+    if (frame.buf[1] == 0x02) {  // Intermittent wipe
+      wda_intermittent_wipe_req = 1;
+      wda_single_wipe_req = 0;
+      wda_cont_slow_wipe_req = 0;
+      wda_cont_fast_wipe_req = 0;
+
+      if (frame.buf[2] == 0x01) {  // Intermittent wipe speed
+        wda_intermittent_wipe_speed = 1;
+      }
+      else if (frame.buf[2] == 0x02) {
+        wda_intermittent_wipe_speed = 5;
+      }
+      else if (frame.buf[2] == 0x03) {
+        wda_intermittent_wipe_speed = 9;
+      }
+      else if (frame.buf[2] == 0x04) {
+        wda_intermittent_wipe_speed = 13;
+      }
+      else{
+        wda_intermittent_wipe_speed = 5;  // Default mid-slow
+      }
+    }
+
+    if (frame.buf[1] == 0x03) {  // Slow wipe
+      wda_intermittent_wipe_req = 0;
+      wda_single_wipe_req = 0;
+      wda_cont_slow_wipe_req = 1;
+      wda_cont_fast_wipe_req = 0;
+    }
+
+    if (frame.buf[1] == 0x04) {  // Fast wipe
+      wda_intermittent_wipe_req = 0;
+      wda_single_wipe_req = 0;
+      wda_cont_slow_wipe_req = 0;
+      wda_cont_fast_wipe_req = 1;
+    }
+
+    can_tx_byte_1 = frame.buf[1];  // Data to be sent out to logger
+    can_tx_byte_2 = frame.buf[2];  // Data to be sent out to logger
+  }
 }
 
 void setup() {
@@ -72,92 +143,68 @@ void setup() {
   Serial.println("");
 }
 
-void constructFrame() {
+void canSendDiagPacket() {
   msg1.id = BASE_CAN_ADDRESS;
-  msg1.len = 8;
-  msg1.buf[0] = 0;
-  msg1.buf[1] = 0;
-  msg1.buf[2] = 0;
-  msg1.buf[3] = 0;
-  msg1.buf[4] = 0;
-  msg1.buf[5] = 0;
-  msg1.buf[6] = 0;
-  msg1.buf[7] = 0;
+  msg1.len = 3;
+  msg1.buf[0] = 0x66;
+  msg1.buf[1] = can_tx_byte_1;
+  msg1.buf[1] = can_tx_byte_2;
+  
+  Can0.write(msg1);
 }
 
 
 void loop() {
-  counter++;
+  Can0.events();
 
-  if (counter > 15) {
-    counter = 0;
+  wda_counter++;
+
+  if (wda_counter > 15) {
+    wda_counter = 0;
   }
 
-  int bit4 = 1;  // KL15 Ignition enable (ON REQUIRED)
-  int bit5 = 1;  // KLX enable (ON REQUIRED)
+  buffer_data[0] = (buffer_data[0] & 0xF0) | (wda_counter & 0x0F);
 
-  uint8_t byte1_first_four_bits = 5;  // Speed controls for intermittent wipe
-  /*
-   * 1 = slow
-   * 5 = low-mid
-   * 9 = high-mid
-   * 13 = = fast
-   */
-  int byte1_bit4 = 0;  // Single wipe
-  int byte1_bit5 = 0;  // Intermittent wipe
-  int byte1_bit6 = 0;  // Slow continous wipe
-  int byte1_bit7 = 0;  // Fast continous wipe
-
-  // Add the counter value to the first 4 bits of byte 0 of buffer_state_a
-  buffer_state_a[0] = (buffer_state_a[0] & 0xF0) | (counter & 0x0F);
-
-  // Set bit 4 based on bit4 variable
-  if (bit4 == 1) {
-    buffer_state_a[0] |= (1 << 4);  // Set bit 4
+  if (wda_kl15_enable == 1) {
+    buffer_data[0] |= (1 << 4);  // Set bit 4
   } else {
-    buffer_state_a[0] &= ~(1 << 4);  // Clear bit 4
+    buffer_data[0] &= ~(1 << 4);  // Clear bit 4
   }
 
-  // Set bit 5 based on bit5 variable
-  if (bit5 == 1) {
-    buffer_state_a[0] |= (1 << 5);  // Set bit 5
+  if (wda_klx_enable == 1) {
+    buffer_data[0] |= (1 << 5);  // Set bit 5
   } else {
-    buffer_state_a[0] &= ~(1 << 5);  // Clear bit 5
+    buffer_data[0] &= ~(1 << 5);  // Clear bit 5
   }
 
-  // Set the first four bits of byte 1
-  buffer_state_a[1] = (buffer_state_a[1] & 0xF0) | (byte1_first_four_bits & 0x0F);
+  buffer_data[1] = (buffer_data[1] & 0xF0) | (wda_intermittent_wipe_speed & 0x0F);
 
-  // Set bit 4 of byte 1 based on byte1_bit4 variable
-  if (byte1_bit4 == 1) {
-    buffer_state_a[1] |= (1 << 4);  // Set bit 4
+  if (wda_single_wipe_req == 1) {
+    buffer_data[1] |= (1 << 4);  // Set bit 4
   } else {
-    buffer_state_a[1] &= ~(1 << 4);  // Clear bit 4
+    buffer_data[1] &= ~(1 << 4);  // Clear bit 4
   }
 
-  // Set bit 5 of byte 1 based on byte1_bit5 variable
-  if (byte1_bit5 == 1) {
-    buffer_state_a[1] |= (1 << 5);  // Set bit 5
+  if (wda_intermittent_wipe_req == 1) {
+    buffer_data[1] |= (1 << 5);  // Set bit 5
   } else {
-    buffer_state_a[1] &= ~(1 << 5);  // Clear bit 5
+    buffer_data[1] &= ~(1 << 5);  // Clear bit 5
   }
 
-  // Set bit 6 of byte 1 based on byte1_bit6 variable
-  if (byte1_bit6 == 1) {
-    buffer_state_a[1] |= (1 << 6);  // Set bit 6
+  if (wda_cont_slow_wipe_req == 1) {
+    buffer_data[1] |= (1 << 6);  // Set bit 6
   } else {
-    buffer_state_a[1] &= ~(1 << 6);  // Clear bit 6
+    buffer_data[1] &= ~(1 << 6);  // Clear bit 6
   }
 
-  // Set bit 7 of byte 1 based on byte1_bit7 variable
-  if (byte1_bit7 == 1) {
-    buffer_state_a[1] |= (1 << 7);  // Set bit 7
+  if (wda_cont_fast_wipe_req == 1) {
+    buffer_data[1] |= (1 << 7);  // Set bit 7
   } else {
-    buffer_state_a[1] &= ~(1 << 7);  // Clear bit 7
+    buffer_data[1] &= ~(1 << 7);  // Clear bit 7
   }
 
-  lin.order(0x31, buffer_state_a, 8, lin2x);
-  constructFrame();
-  Can0.write(msg1);
-  delay(20);
+  lin.order(0x31, buffer_data, 8, lin2x);
+  canSendDiagPacket();
+
+  delay(20);  // Sleep
 }
