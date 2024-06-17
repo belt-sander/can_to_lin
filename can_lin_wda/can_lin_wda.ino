@@ -11,6 +11,7 @@ FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can0;
 #define NUM_TX_MAILBOXES 1
 
 unsigned int BASE_CAN_ADDRESS = 0x777;
+bool DEBUG_MODE = false;
 static CAN_message_t msg1;
 
 LIN lin;
@@ -41,33 +42,29 @@ uint8_t buffer_data[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 uint8_t can_data;
 
 void readFrame(const CAN_message_t &frame) {
-  Serial.println("--- Incoming user request message ---");
-  Serial.print("OVERRUN: ");
-  Serial.print(frame.flags.overrun);
-  Serial.print(" LEN: ");
-  Serial.print(frame.len);
-  Serial.print(" EXT: ");
-  Serial.print(frame.flags.extended);
-  Serial.print(" TS: ");
-  Serial.print(frame.timestamp);
-  Serial.print(" ID: ");
-  Serial.print(frame.id, HEX);
-  Serial.print(" Buffer: ");
-  for (uint8_t i = 0; i < frame.len; i++) {
-    Serial.print(frame.buf[i], HEX);
-    Serial.print(" ");
+  if (DEBUG_MODE) {
+    Serial.println("--- Incoming user request message ---");
+    Serial.print("OVERRUN: ");
+    Serial.print(frame.flags.overrun);
+    Serial.print(" LEN: ");
+    Serial.print(frame.len);
+    Serial.print(" EXT: ");
+    Serial.print(frame.flags.extended);
+    Serial.print(" TS: ");
+    Serial.print(frame.timestamp);
+    Serial.print(" ID: ");
+    Serial.print(frame.id, HEX);
+    Serial.print(" Buffer: ");
+    for (uint8_t i = 0; i < frame.len; i++) {
+      Serial.print(frame.buf[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
   }
-  Serial.println();
 
-  if (frame.buf[0] == 0x66) {
-    if (frame.buf[1] == 0x01) {  // Single wipe
-      wda_intermittent_wipe_req = 0;
-      wda_single_wipe_req = 1;
-      wda_cont_slow_wipe_req = 0;
-      wda_cont_fast_wipe_req = 0;
-    } 
+  if (frame.buf[0] == 0x66) {  // Header
     
-    if (frame.buf[1] == 0x02) {  // Intermittent wipe
+    if (frame.buf[1] == 0x01) {  // Intermittent wipe
       wda_intermittent_wipe_req = 1;
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 0;
@@ -90,19 +87,33 @@ void readFrame(const CAN_message_t &frame) {
       }
     }
 
-    if (frame.buf[1] == 0x03) {  // Slow wipe
+    if (frame.buf[1] == 0x02) {  // Slow wipe
       wda_intermittent_wipe_req = 0;
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 1;
       wda_cont_fast_wipe_req = 0;
     }
 
-    if (frame.buf[1] == 0x04) {  // Fast wipe
+    if (frame.buf[1] == 0x03) {  // Fast wipe
       wda_intermittent_wipe_req = 0;
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 0;
       wda_cont_fast_wipe_req = 1;
     }
+
+    if (frame.buf[1] == 0x04) {  // Single wipe
+      wda_intermittent_wipe_req = 0;
+      wda_single_wipe_req = 1;
+      wda_cont_slow_wipe_req = 0;
+      wda_cont_fast_wipe_req = 0;
+    }
+
+    else {  // Goodbye
+      wda_intermittent_wipe_req = 0;
+      wda_single_wipe_req = 0;
+      wda_cont_slow_wipe_req = 0;
+      wda_cont_fast_wipe_req = 0;
+    } 
 
     can_tx_byte_1 = frame.buf[1];  // Data to be sent out to logger
     can_tx_byte_2 = frame.buf[2];  // Data to be sent out to logger
