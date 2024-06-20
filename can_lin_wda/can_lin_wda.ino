@@ -11,7 +11,8 @@ FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can0;
 #define NUM_TX_MAILBOXES 1
 
 unsigned int BASE_CAN_ADDRESS = 0x777;
-bool DEBUG_MODE = false;
+unsigned int tx = 0x778;
+bool DEBUG_MODE = true;
 static CAN_message_t msg1;
 
 LIN lin;
@@ -42,25 +43,23 @@ uint8_t buffer_data[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 uint8_t can_data;
 
 void readFrame(const CAN_message_t &frame) {
-  if (DEBUG_MODE) {
-    Serial.println("--- Incoming user request message ---");
-    Serial.print("OVERRUN: ");
-    Serial.print(frame.flags.overrun);
-    Serial.print(" LEN: ");
-    Serial.print(frame.len);
-    Serial.print(" EXT: ");
-    Serial.print(frame.flags.extended);
-    Serial.print(" TS: ");
-    Serial.print(frame.timestamp);
-    Serial.print(" ID: ");
-    Serial.print(frame.id, HEX);
-    Serial.print(" Buffer: ");
-    for (uint8_t i = 0; i < frame.len; i++) {
-      Serial.print(frame.buf[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
+  Serial.println("--- Incoming user request message ---");
+  Serial.print("OVERRUN: ");
+  Serial.print(frame.flags.overrun);
+  Serial.print(" LEN: ");
+  Serial.print(frame.len);
+  Serial.print(" EXT: ");
+  Serial.print(frame.flags.extended);
+  Serial.print(" TS: ");
+  Serial.print(frame.timestamp);
+  Serial.print(" ID: ");
+  Serial.print(frame.id, HEX);
+  Serial.print(" Buffer: ");
+  for (uint8_t i = 0; i < frame.len; i++) {
+    Serial.print(frame.buf[i], HEX);
+    Serial.print(" ");
   }
+  Serial.println();
 
   if (frame.buf[0] == 0x66) {  // Header
     
@@ -69,7 +68,7 @@ void readFrame(const CAN_message_t &frame) {
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 0;
       wda_cont_fast_wipe_req = 0;
-
+      Serial.println("HERRE YOOOOOO");
       if (frame.buf[2] == 0x01) {  // Intermittent wipe speed
         wda_intermittent_wipe_speed = 1;
       }
@@ -87,21 +86,21 @@ void readFrame(const CAN_message_t &frame) {
       }
     }
 
-    if (frame.buf[1] == 0x02) {  // Slow wipe
+    else if (frame.buf[1] == 0x02) {  // Slow wipe
       wda_intermittent_wipe_req = 0;
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 1;
       wda_cont_fast_wipe_req = 0;
     }
 
-    if (frame.buf[1] == 0x03) {  // Fast wipe
+    else if (frame.buf[1] == 0x03) {  // Fast wipe
       wda_intermittent_wipe_req = 0;
       wda_single_wipe_req = 0;
       wda_cont_slow_wipe_req = 0;
       wda_cont_fast_wipe_req = 1;
     }
 
-    if (frame.buf[1] == 0x04) {  // Single wipe
+    else if (frame.buf[1] == 0x04) {  // Single wipe
       wda_intermittent_wipe_req = 0;
       wda_single_wipe_req = 1;
       wda_cont_slow_wipe_req = 0;
@@ -145,7 +144,7 @@ void setup() {
 
   Can0.setMBFilter(REJECT_ALL);
   Can0.enableMBInterrupts();
-  Can0.setMBFilter(MB1, 0x666);
+  Can0.setMBFilter(MB1, 0x777);
   Can0.onReceive(MB1, readFrame);
 
   Serial.println("--- FlexCAN_T4 MB Status ---");
@@ -155,7 +154,7 @@ void setup() {
 }
 
 void canSendDiagPacket() {
-  msg1.id = BASE_CAN_ADDRESS;
+  msg1.id = tx;
   msg1.len = 3;
   msg1.buf[0] = 0x66;
   msg1.buf[1] = can_tx_byte_1;
@@ -215,6 +214,13 @@ void loop() {
   }
 
   lin.order(0x31, buffer_data, 8, lin2x);
+  Serial.println("raw data to wda");
+  Serial.println((buffer_data[0] & 0xf0) >> 4);
+  Serial.println((buffer_data[0] & 0x0f));  
+  Serial.println((buffer_data[1] & 0xf0) >> 4);
+  Serial.println((buffer_data[1] & 0x0f));  
+
+  Serial.println();
   canSendDiagPacket();
 
   delay(20);  // Sleep
