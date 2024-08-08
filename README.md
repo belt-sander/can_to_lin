@@ -9,6 +9,10 @@ This module allows a user to send a CAN message on the ID specified in the proje
 NOTE: This all assumes that you use the wonderful product sold by SKPang, here:
 https://www.skpang.co.uk/products/teensy-4-0-can-fd-and-lin-bus-breakout-board-include-teensy-4-0
 
+DOUBLE NOTE: This library must be installed in your Arduino IDE. If not the `lin_bus.h` import will not function:
+https://github.com/MarkusLange/Teensy_3.x_4.x_and_LC_LIN_Master
+
+
 ### User CAN TX Function
 
 This function will receive the following input:
