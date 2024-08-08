@@ -1,10 +1,10 @@
-# CAN to LIN Module
+# CAN to LIN Module [Bosch Motorsport WDA LIN]
 
-## T4 based CAN to LIN module for control of LIN-based devices via CAN commands
+## T4 based CAN to LIN module for control of the LIN-based Bosch Motorsport WDA via CAN commands
 
 ### Description
 
-This module allows a user to send a CAN message on the ID specified in the project by the `BASE_RX_CAN_ADDRESS` parameter, enabling control of the type and speed of the Bosch WDA LIN wiper. The module also publishes the received CAN state from the user on the CAN message ID specified by `BASE_TX_CAN_ADDRESS`.
+This module allows a user to send a CAN message on the ID specified in the project by the `BASE_RX_CAN_ADDRESS` parameter, enabling control of the type and speed of the Bosch Motorsport WDA LIN wiper. The module also publishes the received CAN state from the user on the CAN message ID specified by `BASE_TX_CAN_ADDRESS`.
 
 NOTE: This all assumes that you use the wonderful product sold by SKPang, here:
 https://www.skpang.co.uk/products/teensy-4-0-can-fd-and-lin-bus-breakout-board-include-teensy-4-0
